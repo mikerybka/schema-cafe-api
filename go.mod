@@ -1,4 +1,4 @@
-module github.com/mikerybka/svhema-cafe-api
+module github.com/mikerybka/schema-cafe-api
 
 go 1.24.4
 
