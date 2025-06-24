@@ -1,9 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -25,59 +25,92 @@ type SchemaCafe struct {
 	DataDir string
 }
 
+type Response struct {
+	Type string `json:"type"`
+	Data any    `json:"data"`
+}
+
 func (cafe *SchemaCafe) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	path := filepath.Join(cafe.DataDir, r.URL.Path)
-	if r.Method == "PUT" {
-		err := os.MkdirAll(filepath.Dir(path), os.ModePerm)
+	switch r.Method {
+	case http.MethodPut:
+		s := &Schema{}
+		json.NewDecoder(r.Body).Decode(s)
+		err := util.WriteJSONFile(path, s)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
 		}
-		f, err := os.Create(path)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		defer f.Close()
-		_, err = io.Copy(f, r.Body)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		return
-	}
-	if r.Method == "DELETE" {
+	case http.MethodDelete:
 		err := os.Remove(path)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
 		}
-		return
-	}
-	fi, err := os.Stat(path)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			http.NotFound(w, r)
-			return
-		}
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if fi.IsDir() {
-		entries, err := os.ReadDir(path)
+	case http.MethodGet:
+		fi, err := os.Stat(path)
 		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				http.NotFound(w, r)
+				return
+			}
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		for _, e := range entries {
-			fmt.Fprintf(w, "<a href=\"%s\">%s</a>", filepath.Join(r.URL.Path, e.Name()), e.Name())
+		if fi.IsDir() {
+			entries, err := os.ReadDir(path)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			if util.Accept(r, "text/html") {
+				for _, e := range entries {
+					fmt.Fprintf(w, "<a href=\"%s\">%s</a>", filepath.Join(r.URL.Path, e.Name()), e.Name())
+				}
+				return
+			}
+			data := []DirEntry{}
+			for _, e := range entries {
+				entry := DirEntry{
+					Name: e.Name(),
+				}
+				if e.IsDir() {
+					entry.Type = "dir"
+				} else {
+					entry.Type = "schema"
+				}
+				data = append(data, entry)
+			}
+			json.NewEncoder(w).Encode(Response{
+				Type: "dir",
+				Data: data,
+			})
+		} else {
+			s := &Schema{}
+			f, err := os.Open(path)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			json.NewDecoder(f).Decode(s)
+			json.NewEncoder(w).Encode(Response{
+				Type: "schema",
+				Data: s,
+			})
 		}
-		return
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
-	f, err := os.Open(path)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	io.Copy(w, f)
+}
+
+type Schema struct {
+	Fields []Field `json:"fields"`
+}
+
+type Field struct {
+	Name string `json:"name"`
+	Type string `json:"type"`
+}
+
+type DirEntry struct {
+	Name string `json:"name"`
+	Type string `json:"type"`
 }
