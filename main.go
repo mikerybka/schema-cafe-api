@@ -26,8 +26,8 @@ type SchemaCafe struct {
 }
 
 type Response struct {
-	Type string `json:"type"`
-	Data any    `json:"data"`
+	Type  string `json:"type"`
+	Value any    `json:"value"`
 }
 
 func (cafe *SchemaCafe) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -80,8 +80,8 @@ func (cafe *SchemaCafe) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				data = append(data, entry)
 			}
 			json.NewEncoder(w).Encode(Response{
-				Type: "dir",
-				Data: data,
+				Type:  "dir",
+				Value: data,
 			})
 		} else {
 			s := &Schema{}
@@ -92,8 +92,8 @@ func (cafe *SchemaCafe) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			json.NewDecoder(f).Decode(s)
 			json.NewEncoder(w).Encode(Response{
-				Type: "schema",
-				Data: s,
+				Type:  "schema",
+				Value: s,
 			})
 		}
 	default:
